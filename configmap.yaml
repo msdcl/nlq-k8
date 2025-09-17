@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nlq-config
+  namespace: nlq-system
+data:
+  # Database Configuration
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "nlq_database"
+  DB_USER: "nlq_user"
+  
+  # Vector Database Configuration
+  VECTOR_DB_HOST: "postgres-service"
+  VECTOR_DB_PORT: "5432"
+  VECTOR_DB_NAME: "nlq_vectors"
+  VECTOR_DB_USER: "nlq_user"
+  
+  # Server Configuration
+  PORT: "3001"
+  NODE_ENV: "production"
+  
+  # Security
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  
+  # Query Execution
+  QUERY_TIMEOUT_MS: "30000"
+  MAX_RESULT_ROWS: "10000"
+  SANDBOX_MODE: "true"
+  
+  # Logging
+  LOG_LEVEL: "info"
+  
+  # Frontend Configuration
+  REACT_APP_API_URL: "http://nlq-backend-service:3001/api"

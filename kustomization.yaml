@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nlq-system
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - postgres-deployment.yaml
+  - backend-deployment.yaml
+  - frontend-deployment.yaml
+  - ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/name: nlq-system
+  app.kubernetes.io/version: "1.0.0"
+  app.kubernetes.io/part-of: natural-language-query
+
+images:
+  - name: nlq-backend
+    newTag: latest
+  - name: nlq-frontend
+    newTag: latest
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nlq-backend
+      namespace: nlq-system
+    spec:
+      template:
+        spec:
+          containers:
+          - name: nlq-backend
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"

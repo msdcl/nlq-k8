@@ -15,14 +15,13 @@ spec:
       labels:
         app: nlq-frontend
     spec:
+      imagePullSecrets:
+      - name: ecr-regcred   # ✅ secret for ECR authentication
       containers:
       - name: nlq-frontend
-        image: nlq-frontend:latest
+        image: 481665127661.dkr.ecr.ap-south-1.amazonaws.com/nlq-frontend:latest
         ports:
-        - containerPort: 3000
-        envFrom:
-        - configMapRef:
-            name: nlq-config
+        - containerPort: 80
         resources:
           requests:
             memory: "128Mi"
@@ -32,14 +31,14 @@ spec:
             cpu: "250m"
         livenessProbe:
           httpGet:
-            path: /
-            port: 3000
+            path: /index.html   # ✅ React apps usually serve index.html
+            port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /
-            port: 3000
+            path: /index.html   # ✅ safer probe path
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
 ---
@@ -52,8 +51,8 @@ spec:
   selector:
     app: nlq-frontend
   ports:
-  - port: 3000
-    targetPort: 3000
+  - port: 80
+    targetPort: 80
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2

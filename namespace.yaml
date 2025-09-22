@@ -4,4 +4,4 @@ metadata:
   name: nlq-system
   labels:
     name: nlq-system
-    app: natural-language-query
+    app: nlq-application

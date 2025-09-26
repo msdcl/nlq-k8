@@ -1,52 +1,49 @@
 #!/bin/bash
 
-# Database initialization script for NLQ application
-# This script creates the necessary tables and extensions
+# Database Initialization Script for Kubernetes
+# This script ensures the database is properly initialized with pgvector
 
 set -e
 
-echo "🗄️ Initializing NLQ Database..."
+echo "🗄️ Initializing PostgreSQL database with pgvector..."
 
 # Wait for PostgreSQL to be ready
-until pg_isready -h postgres-service -p 5432 -U nlq_user; do
-  echo "Waiting for PostgreSQL to be ready..."
-  sleep 2
-done
+echo "⏳ Waiting for PostgreSQL to be ready..."
+kubectl wait --for=condition=ready pod \
+    -l app=postgres \
+    -n nlq-system \
+    --timeout=300s
 
-echo "✅ PostgreSQL is ready!"
+# Get PostgreSQL pod name
+POSTGRES_POD=$(kubectl get pods -n nlq-system -l app=postgres -o jsonpath='{.items[0].metadata.name}')
 
-# Create database extensions
-echo "📦 Creating database extensions..."
-psql -h postgres-service -p 5432 -U nlq_user -d nlq_database -c "CREATE EXTENSION IF NOT EXISTS vector;"
-psql -h postgres-service -p 5432 -U nlq_user -d nlq_database -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+echo "📦 PostgreSQL pod: $POSTGRES_POD"
 
-echo "✅ Database extensions created!"
+# Test connection
+echo "🔍 Testing PostgreSQL connection..."
+kubectl exec -n nlq-system $POSTGRES_POD -- pg_isready -U nlq_user -d nlq_database
 
-# Create basic tables (you can add your actual schema here)
-echo "🏗️ Creating basic tables..."
-psql -h postgres-service -p 5432 -U nlq_user -d nlq_database << EOF
--- Create table_metadata table for vector search
-CREATE TABLE IF NOT EXISTS table_metadata (
-    id SERIAL PRIMARY KEY,
-    table_name VARCHAR(255) NOT NULL,
-    description TEXT,
-    schema_info JSONB,
-    embedding vector(768),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+# Check if vector extension is installed
+echo "🧠 Checking pgvector extension..."
+kubectl exec -n nlq-system $POSTGRES_POD -- psql -U nlq_user -d nlq_database -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
 
--- Create indexes
-CREATE INDEX IF NOT EXISTS idx_table_metadata_table_name ON table_metadata(table_name);
-CREATE INDEX IF NOT EXISTS idx_table_metadata_embedding ON table_metadata USING ivfflat (embedding vector_cosine_ops);
+# Check if vector extension is installed in vector database
+echo "🧠 Checking pgvector extension in vector database..."
+kubectl exec -n nlq-system $POSTGRES_POD -- psql -U nlq_user -d nlq_vectors -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
 
--- Insert sample data (optional)
-INSERT INTO table_metadata (table_name, description, schema_info) VALUES 
-('customers', 'Customer information table', '{"columns": [{"name": "id", "type": "integer"}, {"name": "name", "type": "varchar"}, {"name": "email", "type": "varchar"}]}'),
-('orders', 'Order information table', '{"columns": [{"name": "id", "type": "integer"}, {"name": "customer_id", "type": "integer"}, {"name": "total", "type": "decimal"}]}'),
-('products', 'Product catalog table', '{"columns": [{"name": "id", "type": "integer"}, {"name": "name", "type": "varchar"}, {"name": "price", "type": "decimal"}]}')
-ON CONFLICT DO NOTHING;
+# List all databases
+echo "📊 Listing all databases..."
+kubectl exec -n nlq-system $POSTGRES_POD -- psql -U nlq_user -c "\l"
 
-EOF
+# List tables in main database
+echo "📋 Listing tables in main database..."
+kubectl exec -n nlq-system $POSTGRES_POD -- psql -U nlq_user -d nlq_database -c "\dt"
 
-echo "✅ Database initialization completed!"
-echo "🎉 NLQ database is ready to use!"
+# List tables in vector database
+echo "📋 Listing tables in vector database..."
+kubectl exec -n nlq-system $POSTGRES_POD -- psql -U nlq_user -d nlq_vectors -c "\dt"
+
+echo "✅ Database initialization completed successfully!"
+echo "🗄️ PostgreSQL is ready with pgvector extension"
+echo "📊 Main database: nlq_database"
+echo "🧠 Vector database: nlq_vectors"

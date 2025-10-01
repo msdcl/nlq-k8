@@ -63,11 +63,11 @@ build_images() {
         
         # Build backend image
         print_status "Building backend image..."
-        docker build -t ${BACKEND_IMAGE}:${TAG} ./backend/
+        docker build -t ${BACKEND_IMAGE}:${TAG} ./nlq-backend/
         
         # Build frontend image with same-origin API URL for proper proxy routing
         print_status "Building frontend image with same-origin API configuration..."
-        docker build --build-arg REACT_APP_API_URL=/api -t ${FRONTEND_IMAGE}:${TAG} ./frontend/
+        docker build --build-arg REACT_APP_API_URL=/api -t ${FRONTEND_IMAGE}:${TAG} ./nlq-frontend/
         
         print_success "Images built successfully for Docker Desktop"
         print_warning "Note: Images are built locally and available to Docker Desktop Kubernetes"
@@ -76,11 +76,11 @@ build_images() {
         
         # Build backend image
         print_status "Building backend image..."
-        docker build -t ${BACKEND_IMAGE}:${TAG} ./backend/
+        docker build -t ${BACKEND_IMAGE}:${TAG} ./nlq-backend/
         
         # Build frontend image with production API URL
         print_status "Building frontend image with production API configuration..."
-        docker build --build-arg REACT_APP_API_URL=https://avirat-empire-api.store/api -t ${FRONTEND_IMAGE}:${TAG} ./frontend/
+        docker build --build-arg REACT_APP_API_URL=https://avirat-empire-api.store/api -t ${FRONTEND_IMAGE}:${TAG} ./nlq-frontend/
         
         print_success "Images built successfully for production"
         print_warning "Note: Make sure to push images to your container registry for production deployment"

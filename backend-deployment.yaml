@@ -2,9 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nlq-backend
-  namespace: nlq-system
+  namespace: nlq-app
   labels:
     app: nlq-backend
+    component: backend
 spec:
   replicas: 2
   selector:
@@ -14,37 +15,139 @@ spec:
     metadata:
       labels:
         app: nlq-backend
+        component: backend
     spec:
-      initContainers:
-      - name: wait-for-postgres
-        image: postgres:15-alpine
-        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432 -U nlq_user; do echo waiting for postgres; sleep 2; done;']
+      containers:
+      - name: nlq-backend
+        image: nlq-backend:latest  # Docker Desktop local image
+        imagePullPolicy: Never  # Use local image only
+        ports:
+        - containerPort: 3001
         env:
-        - name: PGPASSWORD
+        # Database Configuration
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: nlq-secrets
               key: DB_PASSWORD
-      containers:
-      - name: nlq-backend
-        image: 481665127661.dkr.ecr.ap-south-1.amazonaws.com/nlq-backend:latest
-        ports:
-        - containerPort: 3001
-        envFrom:
-        - configMapRef:
-            name: nlq-config
-        - secretRef:
-            name: nlq-secrets
-        volumeMounts:
-        - name: app-storage
-          mountPath: /app/logs
+        # Vector Database Configuration
+        - name: VECTOR_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: VECTOR_DB_HOST
+        - name: VECTOR_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: VECTOR_DB_PORT
+        - name: VECTOR_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: VECTOR_DB_NAME
+        - name: VECTOR_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: VECTOR_DB_USER
+        - name: VECTOR_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: VECTOR_DB_PASSWORD
+        # API Configuration
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: GEMINI_API_KEY
+        # Server Configuration
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: PORT
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: NODE_ENV
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: FRONTEND_URL
+        # Security
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: JWT_SECRET
+        - name: RATE_LIMIT_WINDOW_MS
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: RATE_LIMIT_WINDOW_MS
+        - name: RATE_LIMIT_MAX_REQUESTS
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: RATE_LIMIT_MAX_REQUESTS
+        # Query Execution
+        - name: QUERY_TIMEOUT_MS
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: QUERY_TIMEOUT_MS
+        - name: MAX_RESULT_ROWS
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: MAX_RESULT_ROWS
+        - name: SANDBOX_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: SANDBOX_MODE
+        # Logging
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: LOG_LEVEL
+        - name: LOG_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: LOG_FILE
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "200m"
+            memory: "256Mi"
+            cpu: "250m"
           limits:
-            memory: "2Gi"
-            cpu: "1000m"
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
@@ -52,6 +155,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health
@@ -59,63 +163,49 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
       volumes:
-      - name: app-storage
+      - name: logs
         emptyDir: {}
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c']
+        args:
+        - |
+          until pg_isready -h postgres-service -p 5432 -U $(DB_USER) -d $(DB_NAME); do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: DB_USER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: DB_NAME
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: nlq-backend-service
-  namespace: nlq-system
+  namespace: nlq-app
+  labels:
+    app: nlq-backend
+    component: backend
 spec:
   selector:
     app: nlq-backend
   ports:
   - port: 3001
     targetPort: 3001
+    protocol: TCP
   type: ClusterIP
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nlq-backend-hpa
-  namespace: nlq-system
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nlq-backend
-  minReplicas: 2
-  maxReplicas: 8
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 60
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 70
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-      - type: Percent
-        value: 100
-        periodSeconds: 15
-      - type: Pods
-        value: 2
-        periodSeconds: 60
-      selectPolicy: Max
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-      - type: Percent
-        value: 10
-        periodSeconds: 60
-      selectPolicy: Min

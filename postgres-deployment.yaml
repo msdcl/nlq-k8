@@ -1,10 +1,29 @@
+# Using emptyDir for local development instead of PVC
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: postgres-pvc
+#   namespace: nlq-app
+#   labels:
+#     app: postgres
+#     component: database
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 10Gi
+#   storageClassName: "hostpath"  # Docker Desktop storage class
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: nlq-system
+  namespace: nlq-app
   labels:
     app: postgres
+    component: database
 spec:
   replicas: 1
   selector:
@@ -14,17 +33,21 @@ spec:
     metadata:
       labels:
         app: postgres
+        component: database
     spec:
       containers:
       - name: postgres
-        image: pgvector/pgvector:pg15
+        image: postgres:15-alpine
         ports:
         - containerPort: 5432
         env:
         - name: POSTGRES_DB
           value: "nlq_database"
         - name: POSTGRES_USER
-          value: "nlq_user"
+          valueFrom:
+            secretKeyRef:
+              name: nlq-secrets
+              key: DB_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -35,12 +58,10 @@ spec:
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data
-        - name: init-scripts
-          mountPath: /docker-entrypoint-initdb.d
         resources:
           requests:
             memory: "256Mi"
-            cpu: "100m"
+            cpu: "250m"
           limits:
             memory: "512Mi"
             cpu: "500m"
@@ -49,9 +70,9 @@ spec:
             command:
             - pg_isready
             - -U
-            - nlq_user
+            - $(POSTGRES_USER)
             - -d
-            - nlq_database
+            - $(POSTGRES_DB)
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
@@ -59,41 +80,29 @@ spec:
             command:
             - pg_isready
             - -U
-            - nlq_user
+            - $(POSTGRES_USER)
             - -d
-            - nlq_database
+            - $(POSTGRES_DB)
           initialDelaySeconds: 5
           periodSeconds: 5
       volumes:
       - name: postgres-storage
-        persistentVolumeClaim:
-          claimName: postgres-pvc
-      - name: init-scripts
-        configMap:
-          name: postgres-init-scripts
+        emptyDir: {}  # Use emptyDir for local development
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres-service
-  namespace: nlq-system
+  namespace: nlq-app
+  labels:
+    app: postgres
+    component: database
 spec:
   selector:
     app: postgres
   ports:
   - port: 5432
     targetPort: 5432
+    protocol: TCP
   type: ClusterIP
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-pvc
-  namespace: nlq-system
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: gp2-csi  # EKS optimized storage class

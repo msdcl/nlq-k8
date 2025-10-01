@@ -2,9 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nlq-frontend
-  namespace: nlq-system
+  namespace: nlq-app
   labels:
     app: nlq-frontend
+    component: frontend
 spec:
   replicas: 2
   selector:
@@ -14,87 +15,58 @@ spec:
     metadata:
       labels:
         app: nlq-frontend
+        component: frontend
     spec:
-      imagePullSecrets:
-      - name: ecr-regcred   # ✅ secret for ECR authentication
       containers:
       - name: nlq-frontend
-        image: 481665127661.dkr.ecr.ap-south-1.amazonaws.com/nlq-frontend:latest
+        image: nlq-frontend:latest  # Docker Desktop local image
+        imagePullPolicy: Never  # Use local image only
         ports:
         - containerPort: 80
+        env:
+        - name: REACT_APP_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: nlq-config
+              key: REACT_APP_API_URL
         resources:
           requests:
             memory: "128Mi"
-            cpu: "50m"
+            cpu: "100m"
           limits:
-            memory: "512Mi"
-            cpu: "250m"
+            memory: "256Mi"
+            cpu: "200m"
         livenessProbe:
           httpGet:
-            path: /index.html   # ✅ React apps usually serve index.html
+            path: /health
             port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /index.html   # ✅ safer probe path
+            path: /health
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: nlq-frontend-service
-  namespace: nlq-system
+  namespace: nlq-app
+  labels:
+    app: nlq-frontend
+    component: frontend
 spec:
   selector:
     app: nlq-frontend
   ports:
   - port: 80
     targetPort: 80
+    protocol: TCP
   type: ClusterIP
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nlq-frontend-hpa
-  namespace: nlq-system
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nlq-frontend
-  minReplicas: 2
-  maxReplicas: 8
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-      - type: Percent
-        value: 50
-        periodSeconds: 15
-      - type: Pods
-        value: 2
-        periodSeconds: 60
-      selectPolicy: Max
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-      - type: Percent
-        value: 10
-        periodSeconds: 60
-      selectPolicy: Min
